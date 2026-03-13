@@ -1,0 +1,259 @@
+---
+title: "MTH6139 Time Series"
+subtitle: "Coursework 1 - McLaren"
+author: "Nicole D'Souza"
+date: "Spring Term | March 2025"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+    highlight: tango
+---
+```{r, echo=FALSE}
+htmltools::img(src = knitr::image_uri("images/QMlogo.png"),
+               alt = 'logo',
+               style = 'position:absolute; top:0; right:0; padding:10px; width:20%;')
+```
+
+# Section 1: Introduction
+
+McLaren's story is one of the most dramatic in motorsport. With back-to-back titles in the late 1980s with Ayrton Senna and Alain Prost, a challenging decade of near-irrelevance, and their amazing 2024 Constructors Championship, McLaren's journey is one of the greatest comeback stories in sports. 
+
+In this project I analyse McLaren's Formula 1 Constructors Championship points from 1966 to 2024 using Meta's Prophet forecasting system. The data was sourced from official Formula 1 constructor standings records available at formula1.com; it does not include their Constructor Championship victory in 2025 and their driver Lando Norris' WDC victory.
+
+The goal of this project is to:
+
+1. Explore McLaren's performance over nearly 60 years of Formula 1
+2. Identify key eras of dominance and decline
+3. Use Prophet to model the trend and forecast future performance
+
+---
+
+# Section 2: Loading and Exploring the Data
+
+## 2.1 Loading the Data
+```{r, message=FALSE, warning=FALSE}
+mclaren_data <- read.csv("data/mclaren.csv")
+head(mclaren_data)
+```
+```{r}
+cat("Years covered:", min(mclaren_data$year), "to", max(mclaren_data$year), "\n")
+cat("Total seasons:", nrow(mclaren_data), "\n")
+cat("Best points total:", max(mclaren_data$points), 
+    "in", mclaren_data$year[which.max(mclaren_data$points)], "\n")
+cat("Worst points total:", min(mclaren_data$points), 
+    "in", mclaren_data$year[which.min(mclaren_data$points)], "\n")
+```
+
+## 2.2 Interactive Points Chart
+```{r, message=FALSE, warning=FALSE}
+library(plotly)
+library(ggplot2)
+
+mclaren_eras <- mclaren_data
+mclaren_eras$era <- ifelse(mclaren_eras$year < 1980, "Early Years",
+                    ifelse(mclaren_eras$year < 1994, "Golden Era (Senna/Prost)",
+                    ifelse(mclaren_eras$year < 2010, "Mixed Results",
+                    ifelse(mclaren_eras$year < 2015, "Button/Hamilton Era",
+                    ifelse(mclaren_eras$year < 2022, "Dark Years & Recovery",
+                    "Norris Era")))))
+
+p <- ggplot(mclaren_eras, aes(x = year, y = points, 
+                               colour = era, 
+                               text = paste("Year:", year, 
+                                           "<br>Points:", points,
+                                           "<br>Wins:", wins,
+                                           "<br>Position:", position))) +
+  geom_line(colour = "grey80", size = 0.8) +
+  geom_point(size = 2.5) +
+  scale_colour_manual(values = c(
+    "Early Years"              = "red",
+    "Golden Era (Senna/Prost)" = "orange",
+    "Mixed Results"            = "yellow",
+    "Button/Hamilton Era"      = "green",
+    "Dark Years & Recovery"    = "blue",
+    "Norris Era"               = "purple"
+  )) +
+  labs(title = "McLaren F1 Constructor Points (1966-2024)",
+       x = "Year", y = "Championship Points", colour = "Era") +
+  theme_minimal()
+
+ggplotly(p, tooltip = "text")
+```
+
+> Hover to see the year, points, wins and championship position. You can also click eras to show/hide them.
+
+The chart shows three distinct phases that stand out immediately:
+
+- The Golden Era (1984-1993) where McLaren dominated with Senna and Prost
+- The Dark Years (2015-2018) where the Honda engine partnership collapsed
+- The 2024 Norris Era which produced McLaren's best ever points total
+
+## 2.3 Championship Wins Over Time
+```{r, message=FALSE, warning=FALSE}
+p2 <- ggplot(mclaren_data, aes(x = year, y = wins,
+                                text = paste("Year:", year, "<br>Wins:", wins))) +
+  geom_col(fill = "orange", alpha = 0.8) +
+  labs(title = "McLaren Race Wins Per Season (1966-2024)",
+       x = "Year", y = "Number of Race Wins") +
+  theme_minimal()
+
+ggplotly(p2, tooltip = "text")
+```
+
+McLaren won 15 out of 16 races during the 1988 season, setting a record that is still in place today. 
+
+## 2.4 Linear Trend
+
+To understand the overall trend, I fitted a simple linear regression.
+```{r}
+mclaren_lm <- lm(points ~ year, data = mclaren_data)
+summary(mclaren_lm)
+```
+```{r, message=FALSE, warning=FALSE}
+p3 <- ggplot(mclaren_data, aes(x = year, y = points)) +
+  geom_point(colour = "orange", size = 2) +
+  geom_smooth(method = "lm", colour = "pink", se = TRUE) +
+  labs(title = "McLaren Points with Linear Trend",
+       x = "Year", y = "Championship Points") +
+  theme_minimal()
+
+ggplotly(p3)
+```
+
+The linear model shows a slight upward trend, but the R-squared value is low — meaning a straight line is a poor fit for this data. This makes sense because McLaren's performance has gone through drastic and dramatic cycles rather than a steady growth. 
+
+This is why Prophet is more suitable than a simple linear model.
+
+---
+
+# Section 3: Preparing Data for Prophet
+
+Prophet requires a dataframe with two specific columns:
+
+- `ds` — dates
+- `y` — values
+
+Since this is annual data, I have converted the year column to a date format.
+```{r, message=FALSE, warning=FALSE}
+mclaren_prophet_df <- data.frame(
+  ds = as.Date(paste0(mclaren_data$year, "-01-01")),
+  y  = mclaren_data$points
+)
+
+head(mclaren_prophet_df)
+```
+
+---
+
+# Section 4: How Prophet Works
+
+Prophet was developed by Meta's Core Data Science team in 2017. It decomposes a time series into three components:
+
+$$y(t) = g(t) + s(t) + h(t) + \epsilon_t$$
+
+Where:
+
+- $g(t)$ is the trend: the long-term direction
+- $s(t)$ is the seasonality: repeating patterns
+- $h(t)$ is the holiday effect: special events
+- $\epsilon_t$ is the error term
+
+For annual data like this, there is no weekly or daily seasonality, only the long-term trend matters.
+```{r, message=FALSE, warning=FALSE}
+mclaren_prophet_model <- prophet::prophet(
+  mclaren_prophet_df,
+  yearly.seasonality  = FALSE,
+  weekly.seasonality  = FALSE,
+  daily.seasonality   = FALSE,
+  changepoint.prior.scale = 0.5
+)
+```
+
+I set have set the `changepoint.prior.scale = 0.5` to allow Prophet to be more flexible in detecting the dramatic shifts in McLaren's performance over the decades.
+
+---
+
+# Section 5: Forecasting McLaren's Future
+
+## 5.1 Generating the Forecast
+
+I haved forecasted McLaren's points for the next 10 seasons (up to 2034).
+```{r, message=FALSE, warning=FALSE}
+mclaren_future <- prophet::make_future_dataframe(
+  mclaren_prophet_model,
+  periods = 10,
+  freq    = "year"
+)
+
+mclaren_forecast <- predict(mclaren_prophet_model, mclaren_future)
+
+tail(mclaren_forecast[c("ds", "yhat", "yhat_lower", "yhat_upper")], 10)
+```
+
+## 5.2 Interactive Forecast Plot
+```{r, message=FALSE, warning=FALSE}
+library(xts)
+library(dygraphs)
+
+actual_xts   <- xts(mclaren_data$points, 
+                    order.by = as.Date(paste0(mclaren_data$year, "-01-01")))
+
+forecast_xts <- xts(mclaren_forecast$yhat, 
+                    order.by = as.Date(mclaren_forecast$ds))
+lower_xts    <- xts(mclaren_forecast$yhat_lower, 
+                    order.by = as.Date(mclaren_forecast$ds))
+upper_xts    <- xts(mclaren_forecast$yhat_upper, 
+                    order.by = as.Date(mclaren_forecast$ds))
+
+combined <- merge(actual_xts, forecast_xts, lower_xts, upper_xts)
+names(combined) <- c("Actual", "Forecast", "Lower", "Upper")
+
+dygraph(combined, 
+        main = "McLaren F1 Points — Historical & Prophet Forecast") %>%
+  dySeries("Actual", label = "Actual Points", color = "orange", strokeWidth = 2) %>%
+  dySeries(c("Lower", "Forecast", "Upper"), 
+           label = "Forecast", color = "pink") %>%
+  dyOptions(fillAlpha = 0.15) %>%
+  dyRangeSelector() %>%
+  dyLegend(show = "always") %>%
+  dyEvent("1988-01-01", "Senna/Prost Peak", labelLoc = "bottom") %>%
+  dyEvent("2015-01-01", "Honda Crisis", labelLoc = "bottom") %>%
+  dyEvent("2024-01-01", "2024 Championship", labelLoc = "bottom")
+```
+
+> Use the range selector at the bottom to zoom into specific eras. The vertical lines mark key moments in McLaren's history.
+
+## 5.3 Trend Component
+```{r, message=FALSE, warning=FALSE}
+prophet::prophet_plot_components(mclaren_prophet_model, mclaren_forecast)
+```
+
+The trend plot shows Prophet has identified the overall trajectory of McLaren's performance. After the catastrophic Honda years (2015-2018), Prophet detects the strong upward trend driven by the Norris era and projects this to continue.
+
+---
+
+# Section 6: Conclusion
+
+| Era | Years | Peak Points | Story |
+|-----|-------|------------|-------|
+| Early Years | 1966-1983 | 143 | Building the team |
+| Golden Era | 1984-1993 | 199 | Senna & Prost dominate |
+| Mixed Results | 1994-2009 | 218 | Competitive but inconsistent |
+| Dark Years | 2015-2018 | 76 | Honda engine disaster |
+| Norris Era | 2023-2024 | 666 | Back on top |
+
+While understanding the uncertainty involved in predicting a sport as unpredictable as Formula 1, Prophet has done a good job of modeling McLaren's journey, capturing the overall upward direction.
+
+The forecast suggests McLaren will remain competitive into the 2030s, though in F1, regulation changes can transform the competitive order overnight, which is why the uncertainty intervals in our forecast are appropriately wide.
+
+> Key takeaway: Meta's Prophet is a powerful tool for modelling time series with complex trends. Even for data as volatile as F1 championship points, Prophet identifies the underlying trajectory and produces meaningful forecasts.
+
+---
+
+# References
+
+- Formula 1 Constructor Standings: <https://www.formula1.com/en/results/constructor-standings>
+- Meta Prophet documentation: <https://facebook.github.io/prophet/>
+- McLaren F1 official website: <https://www.mclaren.com/racing/>
