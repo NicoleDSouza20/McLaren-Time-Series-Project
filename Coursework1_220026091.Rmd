@@ -14,13 +14,18 @@ output:
 htmltools::img(src = knitr::image_uri("images/QMlogo.png"),
                alt = 'logo',
                style = 'position:absolute; top:0; right:0; padding:10px; width:20%;')
-```
 
+htmltools::img(src = knitr::image_uri("images/McLarenlogo.jpg"),
+               alt = 'mclaren logo',
+               style = 'position:absolute; top:60px; right:0; padding:10px; width:8%;')
+```
 # Section 1: Introduction
 
-McLaren's story is one of the most dramatic in motorsport. With back-to-back titles in the late 1980s with Ayrton Senna and Alain Prost, a challenging decade of near-irrelevance, and their amazing 2024 Constructors Championship, McLaren's journey is one of the greatest comeback stories in sports. 
+McLaren's story is one of the most dramatic in motorsport. With back to back titles in the late 1980s with Ayrton Senna and Alain Prost, a challenging decade of near irrelevance, and their 2024 Constructors Championship, McLaren's journey is one of the greatest comeback stories in sports. 
 
-In this project I analyse McLaren's Formula 1 Constructors Championship points from 1966 to 2024 using Meta's Prophet forecasting system. The data was sourced from official Formula 1 constructor standings records available at formula1.com; it does not include their Constructor Championship victory in 2025 and their driver Lando Norris' WDC victory.
+In this project I analyse McLaren's Formula 1 Constructors Championship points from 1966 to 2024 using Meta's Prophet forecasting system. 
+
+The data was sourced from official Formula 1 constructor standings records available at formula1.com. Note it does not include their Constructor Championship victory in 2025 and their driver Lando Norris' WDC victory.
 
 The goal of this project is to:
 
@@ -122,7 +127,9 @@ p3 <- ggplot(mclaren_data, aes(x = year, y = points)) +
 ggplotly(p3)
 ```
 
-The linear model shows a slight upward trend, but the R-squared value is low — meaning a straight line is a poor fit for this data. This makes sense because McLaren's performance has gone through drastic and dramatic cycles rather than a steady growth. 
+The linear model shows a slight upward trend, but the R-squared value is low, meaning a straight line is a poor fit for this data. 
+
+This makes sense because McLaren's performance has gone through drastic and dramatic cycles rather than a steady growth. 
 
 This is why Prophet is more suitable than a simple linear model.
 
@@ -230,7 +237,8 @@ dygraph(combined,
 prophet::prophet_plot_components(mclaren_prophet_model, mclaren_forecast)
 ```
 
-The trend plot shows Prophet has identified the overall trajectory of McLaren's performance. After the catastrophic Honda years (2015-2018), Prophet detects the strong upward trend driven by the Norris era and projects this to continue.
+The trend plot shows Prophet has identified the overall trajectory of McLaren's performance. 
+After the detrimental Honda years (2015-2018), Prophet detects the strong upward trend driven by the Norris era and projects this to continue.
 
 ---
 
