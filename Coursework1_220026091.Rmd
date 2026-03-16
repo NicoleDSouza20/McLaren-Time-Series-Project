@@ -1,6 +1,6 @@
 ---
 title: "MTH6139 Time Series"
-subtitle: "Coursework 1 - McLaren"
+subtitle: "Coursework 1 - Chasing Championships: McLaren in F1"
 author: "Nicole D'Souza"
 date: "Spring Term | March 2025"
 output:
